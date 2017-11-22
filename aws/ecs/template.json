@@ -27,6 +27,10 @@
             "Description": "Name for the ECS host",
             "Type": "String"
         },
+        "ecsServiceRole": {
+            "Description": "Role for the service",
+            "Type": "String"
+        },
         "extra": {
             "Default": "42",
             "Description": "Extra bits",
@@ -118,6 +122,127 @@
                     ]
                 },
                 "InstanceId": {"Ref": "ecsHost"}
+            }
+        },
+        "cloudwatchLogsGroup": {
+            "Type": "AWS::Logs::LogGroup",
+            "Properties": {
+                "LogGroupName": {
+                    "Fn::Join": [ "-", 
+                        [ "ECSLogGroup", { "Ref":"AWS::StackName" } ]
+                    ]
+                },
+            "RetentionInDays": 7
+            }
+        },
+        "taskDefinition": {
+            "Type": "AWS::ECS::TaskDefinition",
+            "Properties": {
+                "ContainerDefinitions": [
+                    {
+                        "Cpu": "10",
+                        "Essential": "true",
+                        "Image": "httpd:2.4",
+                        "LogConfiguration": {
+                            "LogDriver": "awslogs",
+                            "Options": {
+                                "awslogs-group": {
+                                    "Ref": "cloudwatchLogsGroup"
+                                },
+                                "awslogs-region": {
+                                    "Ref": "AWS::Region"
+                                },
+                                "awslogs-stream-prefix": "ecs-lab-app"
+                            }
+                        },
+                        "Memory": "300",
+                        "MountPoints": [
+                            {
+                                "ContainerPath": "/usr/local/apache2/htdocs",
+                                "SourceVolume": "src-vol"
+                            }
+                        ],
+                        "Name": "ecs-lab-app",
+                        "PortMappings": [
+                            {
+                                "ContainerPort": 80
+                            }
+                        ]
+                    }
+                ],
+                "Family": "ecs-lab-task",
+                "Volumes": [
+                    {
+                        "Name": "src-vol"
+                    }
+                ]
+            }
+        },
+        "ecsLabALB":{
+            "Type":"AWS::ElasticLoadBalancingV2::LoadBalancer",
+            "Properties":{
+                "Name": "ecsLabALB",
+                "Scheme":"internet-facing",
+                "LoadBalancerAttributes": [
+                    {
+                        "Key":"idle_timeout.timeout_seconds",
+                        "Value":"30"
+                    }
+                ],
+                "Subnets": [ 
+                    {"Fn::ImportValue": "adminSubnetOneV1"},
+                    {"Fn::ImportValue": "adminSubnetTwoV1"}
+                ],
+                "SecurityGroups": [ { "Ref":"ecsSecuityGroup" } ]
+            }
+        },
+        "ecsLabTargetGroup": {
+            "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+            "DependsOn": "ecsLabALB",
+            "Properties": {
+                "HealthCheckIntervalSeconds": 10,
+                "HealthCheckPath": "/",
+                "HealthCheckProtocol": "HTTP",
+                "HealthCheckTimeoutSeconds": 5,
+                "HealthyThresholdCount": 2,
+                "Name": "ecsLabTargetGroup",
+                "Port": 80,
+                "Protocol": "HTTP",
+                "UnhealthyThresholdCount": 2,
+                "VpcId": {"Fn::ImportValue": "adminVPCV1"}
+            }
+        },
+        "ecsLabALBListener":{
+            "Type": "AWS::ElasticLoadBalancingV2::Listener",
+            "Properties": {
+                "DefaultActions":[
+                    {
+                        "Type":"forward",
+                        "TargetGroupArn": { "Ref": "ecsLabTargetGroup" }
+                    }
+                ],
+                "LoadBalancerArn": { "Ref":"ecsLabALB" },
+                "Port": "80",
+                "Protocol": "HTTP"
+            }
+        },
+        "labService":{
+            "Type": "AWS::ECS::Service",
+            "DependsOn": "ecsLabALBListener",
+            "Properties": {
+                "TaskDefinition": { "Ref":"taskDefinition" },
+                "Cluster": { "Ref": "ECSCluster" },
+                "DesiredCount": "1",
+                "LoadBalancers": [
+                    {
+                        "ContainerName": "ecs-lab-app",
+                        "ContainerPort": "80",
+                        "TargetGroupArn": {
+                            "Ref": "ecsLabTargetGroup"
+                        }
+                    }
+                ],
+                "Role": { "Ref":"ecsServiceRole" }
             }
         }
     }
