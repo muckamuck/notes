@@ -27,10 +27,6 @@
             "Description": "Name for the ECS host",
             "Type": "String"
         },
-        "ecsServiceRole": {
-            "Description": "Role for the service",
-            "Type": "String"
-        },
         "extra": {
             "Default": "42",
             "Description": "Extra bits",
@@ -212,6 +208,43 @@
                 "VpcId": {"Fn::ImportValue": "adminVPCV1"}
             }
         },
+        "ecsServiceRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": [ "sts:AssumeRole" ],
+                            "Effect": "Allow",
+                            "Principal": { "Service": [ "ecs.amazonaws.com" ] }
+                        }
+                    ]
+                },
+                "Path": "/",
+                "Policies": [
+                    {
+                        "PolicyDocument": {
+                            "Statement": [
+                                {
+                                    "Action": [
+                                        "elasticloadbalancing:DeregisterInstancesFromLoadBalancer",
+                                        "elasticloadbalancing:DeregisterTargets",
+                                        "elasticloadbalancing:Describe*",
+                                        "elasticloadbalancing:RegisterInstancesWithLoadBalancer",
+                                        "elasticloadbalancing:RegisterTargets",
+                                        "ec2:Describe*",
+                                        "ec2:AuthorizeSecurityGroupIngress"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": "*"
+                                }
+                            ]
+                        },
+                        "PolicyName": "ecs-service"
+                    }
+                ]
+            }
+        },
         "ecsLabALBListener":{
             "Type": "AWS::ElasticLoadBalancingV2::Listener",
             "Properties": {
@@ -228,7 +261,10 @@
         },
         "labService":{
             "Type": "AWS::ECS::Service",
-            "DependsOn": "ecsLabALBListener",
+            "DependsOn": [
+                "ecsLabALBListener",
+                "ecsServiceRole"
+            ],
             "Properties": {
                 "TaskDefinition": { "Ref":"taskDefinition" },
                 "Cluster": { "Ref": "ECSCluster" },
@@ -242,7 +278,7 @@
                         }
                     }
                 ],
-                "Role": { "Ref":"ecsServiceRole" }
+                "Role": { "Ref": "ecsServiceRole" }
             }
         }
     }
