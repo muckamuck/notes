@@ -1,0 +1,124 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "ECS Experiment",
+    "Parameters": {
+        "clusterName": {
+            "Default": "cf-cluster-one",
+            "Description": "Name of the cluster we are creating",
+            "Type": "String"
+        },
+        "ecsAMI": {
+            "Description": "AMI for the instance",
+            "Type": "String"
+        },
+        "ecsInstanceProfile": {
+            "Description": "IAM profile for the instance",
+            "Type": "String"
+        },
+        "ec2Key": {
+            "Description": "Key for the ECS host",
+            "Type": "String"
+        },
+        "instanceType": {
+            "Description": "Instance type  for the ECS host",
+            "Type": "String"
+        },
+        "machineName": {
+            "Description": "Name for the ECS host",
+            "Type": "String"
+        },
+        "extra": {
+            "Default": "42",
+            "Description": "Extra bits",
+            "Type": "String"
+        }
+    },
+    "Resources": {
+        "ECSCluster":{
+            "Type":"AWS::ECS::Cluster",
+            "Properties" : {
+                "ClusterName" : { "Ref": "clusterName" }
+            }
+        },
+        "ecsSecuityGroup" : {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties" : {
+                "GroupDescription" : "Allow ECS connections",
+                "GroupName" : "ecs-host",
+                "VpcId" : {"Fn::ImportValue": "adminVPCV1"},
+                "SecurityGroupIngress" : [
+                    {
+                        "IpProtocol" : "tcp",
+                        "FromPort" : "22",
+                        "ToPort" : "22",
+                        "CidrIp" : "0.0.0.0/0"
+                    },
+                    {
+                        "IpProtocol" : "tcp",
+                        "FromPort" : "80",
+                        "ToPort" : "80",
+                        "CidrIp" : "0.0.0.0/0"
+                    },
+                    {
+                        "IpProtocol" : "tcp",
+                        "FromPort" : "443",
+                        "ToPort" : "443",
+                        "CidrIp" : "0.0.0.0/0"
+                    },
+                    {
+                        "IpProtocol" : "tcp",
+                        "FromPort" : "8080",
+                        "ToPort" : "8080",
+                        "CidrIp" : "0.0.0.0/0"
+                    }
+                ],
+                "SecurityGroupEgress" : [{
+                    "IpProtocol" : "tcp",
+                    "FromPort" : "1",
+                    "ToPort" : "65535",
+                    "CidrIp" : "0.0.0.0/0"
+                }]
+            }
+        },
+        "ecsHost" : {
+            "Type" : "AWS::EC2::Instance",
+            "Properties" : {
+                "ImageId" : {"Ref": "ecsAMI"},
+                "KeyName" : {"Ref": "ec2Key"},
+                "SubnetId": {"Fn::ImportValue": "adminSubnetOneV1"},
+                "SecurityGroupIds": [{"Ref": "ecsSecuityGroup"}],
+                "IamInstanceProfile": {"Ref": "ecsInstanceProfile"},
+                "InstanceType": {"Ref": "instanceType"},
+                "Tags" : [{"Key" : "Name", "Value" : {"Ref": "machineName"}}],
+                "UserData": {
+                    "Fn::Base64" : { "Fn::Join" : ["", [
+                    "#!/bin/bash", "\n",
+                    "echo ECS_CLUSTER=", { "Ref": "clusterName" }, " >> /etc/ecs/ecs.config", "\n"
+                    ]]}
+                }
+            }
+        },
+        "ecsIPaddress": {
+            "Type" : "AWS::EC2::EIP",
+            "Properties" : {
+                "Domain" : "vpc"
+            }
+        },
+        "adminSSHaddressAssoc": {
+            "Type": "AWS::EC2::EIPAssociation",
+            "DependsOn": [
+                "ecsHost",
+                "ecsIPaddress"
+            ],
+            "Properties": {
+                "AllocationId": {
+                    "Fn::GetAtt": [
+                        "ecsIPaddress",
+                        "AllocationId"
+                    ]
+                },
+                "InstanceId": {"Ref": "ecsHost"}
+            }
+        }
+    }
+}
