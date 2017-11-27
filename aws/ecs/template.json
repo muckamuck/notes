@@ -122,12 +122,6 @@
                             }
                         },
                         "Memory": "300",
-                        "MountPoints": [
-                            {
-                                "ContainerPath": "/usr/local/apache2/htdocs",
-                                "SourceVolume": "src-vol"
-                            }
-                        ],
                         "Name": "ecs-lab-app",
                         "PortMappings": [
                             {
@@ -136,12 +130,7 @@
                         ]
                     }
                 ],
-                "Family": "ecs-lab-task",
-                "Volumes": [
-                    {
-                        "Name": "src-vol"
-                    }
-                ]
+                "Family": "ecs-lab-task"
             }
         },
         "ecsLabALB":{
@@ -229,76 +218,208 @@
                 "Protocol": "HTTP"
             }
         },
-       "labService":{
-            "Type": "AWS::ECS::Service",
-            "DependsOn": [
-                "ecsLabALBListener",
-                "ecsServiceRole"
-            ],
+        "labService":{
+             "Type": "AWS::ECS::Service",
+             "DependsOn": [
+                 "ecsLabALBListener",
+                 "ecsServiceRole"
+             ],
+             "Properties": {
+                 "TaskDefinition": { "Ref":"taskDefinition" },
+                 "Cluster": { "Ref": "ECSCluster" },
+                 "DesiredCount": "1",
+                 "LoadBalancers": [
+                     {
+                         "ContainerName": "ecs-lab-app",
+                         "ContainerPort": "80",
+                         "TargetGroupArn": {
+                             "Ref": "ecsLabTargetGroup"
+                         }
+                     }
+                 ],
+                 "Role": { "Ref": "ecsServiceRole" }
+             }
+        },
+        "labLaunchConfig": {
+            "Type": "AWS::AutoScaling::LaunchConfiguration",
             "Properties": {
-                "TaskDefinition": { "Ref":"taskDefinition" },
-                "Cluster": { "Ref": "ECSCluster" },
-                "DesiredCount": "1",
-                "LoadBalancers": [
+                "IamInstanceProfile": { "Ref": "ecsInstanceProfile" },
+                "ImageId" : { "Ref": "ecsAMI" },
+                "KeyName" : { "Ref": "ec2Key" },
+                "InstanceType": { "Ref": "instanceType" },
+                "SecurityGroups": [ { "Ref": "ecsSecuityGroup" } ],
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "#!/bin/bash -xe\n",
+                                "echo ECS_CLUSTER=", { "Ref": "ECSCluster" }, " >> /etc/ecs/ecs.config", "\n",
+                                "yum install -y aws-cfn-bootstrap", "\n",
+                                "/opt/aws/bin/cfn-signal -e $? ",
+                                "         --stack ", { "Ref": "AWS::StackName" },
+                                "         --resource labAutoScalingGroup ",
+                                "         --region ", { "Ref": "AWS::Region" }, "\n"
+                            ]
+                        ]
+                    }
+                }
+            }
+        },
+        "labAutoScalingGroup": {
+            "Type": "AWS::AutoScaling::AutoScalingGroup",
+            "CreationPolicy": {
+                "ResourceSignal": {
+                    "Timeout": "PT15M"
+                }
+            },
+            "Properties": {
+                "LaunchConfigurationName": { "Ref": "labLaunchConfig" },
+                "DesiredCapacity": { "Ref": "desiredCapacity" },
+                "MaxSize": { "Ref": "maxSize" },
+                "MinSize": "1",
+                "VPCZoneIdentifier": [
+                    {"Fn::ImportValue": "workerSubnetOneV1"},
+                    {"Fn::ImportValue": "workerSubnetTwoV1"}
+                ]
+            },
+            "UpdatePolicy": {
+                "AutoScalingReplacingUpdate": {
+                    "WillReplace": "true"
+                }
+            }
+        },
+        "labAutoscalingRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": [
+                                "sts:AssumeRole"
+                            ],
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "application-autoscaling.amazonaws.com"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                "Path": "/",
+                "Policies": [
                     {
-                        "ContainerName": "ecs-lab-app",
-                        "ContainerPort": "80",
-                        "TargetGroupArn": {
-                            "Ref": "ecsLabTargetGroup"
+                        "PolicyDocument": {
+                            "Statement": [
+                                {
+                                    "Action": [
+                                        "application-autoscaling:*",
+                                        "cloudwatch:DescribeAlarms",
+                                        "cloudwatch:PutMetricAlarm",
+                                        "ecs:DescribeServices",
+                                        "ecs:UpdateService"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": "*"
+                                }
+                            ]
+                        },
+                        "PolicyName": "service-autoscaling"
+                    }
+                ]
+            }
+        },
+        "labServiceScalingTarget": {
+            "Type": "AWS::ApplicationAutoScaling::ScalableTarget",
+            "DependsOn": "labService",
+            "Properties": {
+                "MinCapacity": 1,
+                "MaxCapacity": 2,
+                "ResourceId": {
+                    "Fn::Join": [
+                        "",
+                        [
+                            "service/", 
+                            { "Ref": "ECSCluster" }, "/", 
+                            { "Fn::GetAtt": [ "labService", "Name" ] }
+                        ]
+                    ]
+                },
+                "RoleARN": {
+                    "Fn::GetAtt": [ "labAutoscalingRole", "Arn" ]
+                },
+                "ScalableDimension": "ecs:service:DesiredCount",
+                "ServiceNamespace": "ecs"
+            }
+        },
+        "labServiceScalingPolicy": {
+            "Type": "AWS::ApplicationAutoScaling::ScalingPolicy",
+            "Properties": {
+                "PolicyName": "AStepPolicy",
+                "PolicyType": "StepScaling",
+                "ScalingTargetId": {
+                    "Ref": "labServiceScalingTarget"
+                },
+                "StepScalingPolicyConfiguration": {
+                    "AdjustmentType": "PercentChangeInCapacity",
+                    "Cooldown": 60,
+                    "MetricAggregationType": "Average",
+                    "StepAdjustments": [
+                        {
+                            "MetricIntervalLowerBound": 0,
+                            "ScalingAdjustment": 200
+                        }
+                    ]
+                }
+            }
+        },
+        "lab500sAlarmScaleUp": {
+            "Type": "AWS::CloudWatch::Alarm",
+            "Properties": {
+                "AlarmActions": [ { "Ref": "labServiceScalingPolicy" }
+                ],
+                "AlarmDescription": "Alarm if our ALB generates too many HTTP 500s.",
+                "ComparisonOperator": "GreaterThanThreshold",
+                "Dimensions": [
+                    {
+                        "Name": "LoadBalancer",
+                        "Value": {
+                            "Fn::GetAtt": [ "ecsLabALB", "LoadBalancerFullName" ]
                         }
                     }
                 ],
-                "Role": { "Ref": "ecsServiceRole" }
+                "EvaluationPeriods": "1",
+                "MetricName": "HTTPCode_ELB_5XX_Count",
+                "Namespace": "AWS/ApplicationELB",
+                "Period": "60",
+                "Statistic": "Average",
+                "Threshold": "10"
             }
-       },
-       "labLaunchConfig": {
-           "Type": "AWS::AutoScaling::LaunchConfiguration",
-           "Properties": {
-               "IamInstanceProfile": { "Ref": "ecsInstanceProfile" },
-               "ImageId" : { "Ref": "ecsAMI" },
-               "KeyName" : { "Ref": "ec2Key" },
-               "InstanceType": { "Ref": "instanceType" },
-               "SecurityGroups": [ { "Ref": "ecsSecuityGroup" } ],
-               "UserData": {
-                   "Fn::Base64": {
-                       "Fn::Join": [
-                           "",
-                           [
-                               "#!/bin/bash -xe\n",
-                               "echo ECS_CLUSTER=", { "Ref": "ECSCluster" }, " >> /etc/ecs/ecs.config", "\n",
-                               "yum install -y aws-cfn-bootstrap", "\n",
-                               "/opt/aws/bin/cfn-signal -e $? ",
-                               "         --stack ", { "Ref": "AWS::StackName" },
-                               "         --resource labAutoScalingGroup ",
-                               "         --region ", { "Ref": "AWS::Region" }, "\n"
-                           ]
-                       ]
-                   }
-               }
-           }
-       },
-       "labAutoScalingGroup": {
-           "Type": "AWS::AutoScaling::AutoScalingGroup",
-           "CreationPolicy": {
-               "ResourceSignal": {
-                   "Timeout": "PT15M"
-               }
-           },
-           "Properties": {
-               "LaunchConfigurationName": { "Ref": "labLaunchConfig" },
-               "DesiredCapacity": { "Ref": "desiredCapacity" },
-               "MaxSize": { "Ref": "maxSize" },
-               "MinSize": "1",
-               "VPCZoneIdentifier": [
-                   {"Fn::ImportValue": "workerSubnetOneV1"},
-                   {"Fn::ImportValue": "workerSubnetTwoV1"}
-               ]
-           },
-           "UpdatePolicy": {
-               "AutoScalingReplacingUpdate": {
-                   "WillReplace": "true"
-               }
-           }
-       }
+        },
+        "labListenerRule": {
+            "Type": "AWS::ElasticLoadBalancingV2::ListenerRule",
+            "DependsOn": "ecsLabALBListener",
+            "Properties": {
+                "Actions": [
+                    {
+                        "TargetGroupArn": { "Ref": "ecsLabTargetGroup" },
+                        "Type": "forward"
+                    }
+                ],
+                "Conditions": [
+                    {
+                        "Field": "path-pattern",
+                        "Values": [
+                            "/"
+                        ]
+                    }
+                ],
+                "ListenerArn": {
+                    "Ref": "ecsLabALBListener"
+                },
+                "Priority": 1
+            }
+        }
     }
 }
