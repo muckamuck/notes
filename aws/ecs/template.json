@@ -27,6 +27,16 @@
             "Description": "Name for the ECS host",
             "Type": "String"
         },
+        "desiredCapacity": {
+            "Default": "1",
+            "Description": "Number of instances to launch into ECS cluster.",
+            "Type": "Number"
+        },
+        "maxSize": {
+            "Default": "2",
+            "Description": "Maximum number of instances to launch into ECS cluster.",
+            "Type": "Number"
+        },
         "extra": {
             "Default": "42",
             "Description": "Extra bits",
@@ -45,7 +55,7 @@
             "Properties" : {
                 "GroupDescription" : "Allow ECS connections",
                 "GroupName" : "ecs-host",
-                "VpcId" : {"Fn::ImportValue": "adminVPCV1"},
+                "VpcId" : {"Fn::ImportValue": "devVPCV1"},
                 "SecurityGroupIngress" : [
                     {
                         "IpProtocol" : "tcp",
@@ -85,7 +95,7 @@
             "Properties" : {
                 "ImageId" : {"Ref": "ecsAMI"},
                 "KeyName" : {"Ref": "ec2Key"},
-                "SubnetId": {"Fn::ImportValue": "adminSubnetOneV1"},
+                "SubnetId": {"Fn::ImportValue": "workerSubnetOneV1"},
                 "SecurityGroupIds": [{"Ref": "ecsSecuityGroup"}],
                 "IamInstanceProfile": {"Ref": "ecsInstanceProfile"},
                 "InstanceType": {"Ref": "instanceType"},
@@ -96,28 +106,6 @@
                     "echo ECS_CLUSTER=", { "Ref": "clusterName" }, " >> /etc/ecs/ecs.config", "\n"
                     ]]}
                 }
-            }
-        },
-        "ecsIPaddress": {
-            "Type" : "AWS::EC2::EIP",
-            "Properties" : {
-                "Domain" : "vpc"
-            }
-        },
-        "adminSSHaddressAssoc": {
-            "Type": "AWS::EC2::EIPAssociation",
-            "DependsOn": [
-                "ecsHost",
-                "ecsIPaddress"
-            ],
-            "Properties": {
-                "AllocationId": {
-                    "Fn::GetAtt": [
-                        "ecsIPaddress",
-                        "AllocationId"
-                    ]
-                },
-                "InstanceId": {"Ref": "ecsHost"}
             }
         },
         "cloudwatchLogsGroup": {
@@ -186,8 +174,8 @@
                     }
                 ],
                 "Subnets": [ 
-                    {"Fn::ImportValue": "adminSubnetOneV1"},
-                    {"Fn::ImportValue": "adminSubnetTwoV1"}
+                    {"Fn::ImportValue": "workerSubnetOneV1"},
+                    {"Fn::ImportValue": "workerSubnetTwoV1"}
                 ],
                 "SecurityGroups": [ { "Ref":"ecsSecuityGroup" } ]
             }
@@ -205,7 +193,7 @@
                 "Port": 80,
                 "Protocol": "HTTP",
                 "UnhealthyThresholdCount": 2,
-                "VpcId": {"Fn::ImportValue": "adminVPCV1"}
+                "VpcId": {"Fn::ImportValue": "devVPCV1"}
             }
         },
         "ecsServiceRole": {
@@ -259,7 +247,7 @@
                 "Protocol": "HTTP"
             }
         },
-        "labService":{
+       "labService":{
             "Type": "AWS::ECS::Service",
             "DependsOn": [
                 "ecsLabALBListener",
@@ -280,6 +268,55 @@
                 ],
                 "Role": { "Ref": "ecsServiceRole" }
             }
-        }
+       },
+       "labLaunchConfig": {
+           "Type": "AWS::AutoScaling::LaunchConfiguration",
+           "Properties": {
+               "IamInstanceProfile": { "Ref": "ecsInstanceProfile" },
+               "ImageId" : { "Ref": "ecsAMI" },
+               "KeyName" : { "Ref": "ec2Key" },
+               "InstanceType": { "Ref": "instanceType" },
+               "SecurityGroups": [ { "Ref": "ecsSecuityGroup" } ],
+               "UserData": {
+                   "Fn::Base64": {
+                       "Fn::Join": [
+                           "",
+                           [
+                               "#!/bin/bash -xe\n",
+                               "echo ECS_CLUSTER=", { "Ref": "ECSCluster" }, " >> /etc/ecs/ecs.config", "\n",
+                               "yum install -y aws-cfn-bootstrap", "\n",
+                               "/opt/aws/bin/cfn-signal -e $? ",
+                               "         --stack ", { "Ref": "AWS::StackName" },
+                               "         --resource labAutoScalingGroup ",
+                               "         --region ", { "Ref": "AWS::Region" }, "\n"
+                           ]
+                       ]
+                   }
+               }
+           }
+       },
+       "labAutoScalingGroup": {
+           "Type": "AWS::AutoScaling::AutoScalingGroup",
+           "CreationPolicy": {
+               "ResourceSignal": {
+                   "Timeout": "PT15M"
+               }
+           },
+           "Properties": {
+               "LaunchConfigurationName": { "Ref": "labLaunchConfig" },
+               "DesiredCapacity": { "Ref": "desiredCapacity" },
+               "MaxSize": { "Ref": "maxSize" },
+               "MinSize": "1",
+               "VPCZoneIdentifier": [
+                   {"Fn::ImportValue": "workerSubnetOneV1"},
+                   {"Fn::ImportValue": "workerSubnetTwoV1"}
+               ]
+           },
+           "UpdatePolicy": {
+               "AutoScalingReplacingUpdate": {
+                   "WillReplace": "true"
+               }
+           }
+       }
     }
 }
