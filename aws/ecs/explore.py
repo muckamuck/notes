@@ -30,4 +30,4 @@ if __name__ == '__main__':
     else:
         print('usage: python {} <template-file>'.format(sys.argv[0]))
 
-    sys.xit(1)
+    sys.exit(1)
