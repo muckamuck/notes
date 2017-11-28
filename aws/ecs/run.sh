@@ -14,6 +14,6 @@ stackility upsert \
     -p stack.properties \
     -t template.json \
     -b ${bucket} \
-    -n ECS-EXAMPLE \
+    -n lab-ecs-example \
     -r us-west-2
     #--dryrun
