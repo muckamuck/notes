@@ -90,6 +90,16 @@
                 }]
             }
         },
+        "ecsSecuityGroupALBports": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": { "Ref":"ecsSecuityGroup" },
+                "IpProtocol": "tcp",
+                "FromPort": "31000",
+                "ToPort": "61000",
+                "SourceSecurityGroupId": { "Ref":"ecsSecuityGroup" }
+            }
+        },
         "cloudwatchLogsGroup": {
             "Type": "AWS::Logs::LogGroup",
             "Properties": {
@@ -130,7 +140,17 @@
                         ]
                     }
                 ],
-                "Family": "ecs-lab-task"
+                "Family": {
+                    "Fn::Join": [
+                        "",
+                        [
+                            {
+                                "Ref": "AWS::StackName"
+                            },
+                            "-ecs-lab-app"
+                        ]
+                    ]
+                }
             }
         },
         "ecsLabALB":{
@@ -145,8 +165,8 @@
                     }
                 ],
                 "Subnets": [ 
-                    {"Fn::ImportValue": "workerSubnetOneV1"},
-                    {"Fn::ImportValue": "workerSubnetTwoV1"}
+                    {"Fn::ImportValue": "frontSubnetOneV1"},
+                    {"Fn::ImportValue": "frontSubnetTwoV1"}
                 ],
                 "SecurityGroups": [ { "Ref":"ecsSecuityGroup" } ]
             }
