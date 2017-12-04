@@ -1,0 +1,107 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "IAM Role for the dev machines",
+    "Parameters": {
+        "artifactsBucket": {
+            "Description": "The place to keep notes",
+            "Type": "String"
+        },
+        "theSourceRepo": {
+            "Description": "The sources that we are about",
+            "Type": "String"
+        },
+        "theSourceBranch": {
+            "Default": "master",
+            "Description": "The branch that we are about",
+            "Type": "String"
+        },
+        "pipelineName": {
+            "Description": "The pipeline name",
+            "Type": "String"
+        },
+        "projectName": {
+            "Description": "The project name",
+            "Type": "String"
+        },
+        "pipelineRole": {
+            "Description": "The role of the builder",
+            "Type": "String"
+        },
+        "buildRole": {
+            "Description": "The role of the builder",
+            "Type": "String"
+        }
+    },
+    "Resources": {
+        "codeBuildProject": {
+            "Type": "AWS::CodeBuild::Project",
+            "Properties": {
+                "Name": { "Ref": "projectName" },
+                "Description": "A description about my project",
+                "ServiceRole": { "Ref": "buildRole" },
+                "Artifacts": {
+                "Type": "no_artifacts"
+            },
+            "Environment": {
+                "Type": "LINUX_CONTAINER",
+                "ComputeType": "BUILD_GENERAL1_SMALL",
+                "Image": "aws/codebuild/python:2.7.12",
+                "EnvironmentVariables": [
+                    { "Name": "answer", "Value": "42" }
+                ]
+            },
+            "Source": {
+                "Location": { "Ref": "theSourceRepo" },
+                "Type": "CODECOMMIT"
+            },
+            "TimeoutInMinutes": 10,
+            "Tags": [
+                    { "Key": "Key1", "Value": "Value1" },
+                    { "Key": "Key2", "Value": "Value2" }
+                ]
+            }
+        },
+        "thePipeline": {
+            "Type": "AWS::CodePipeline::Pipeline",
+            "Properties": {
+                "Name": { "Ref": "pipelineName" },
+                "RoleArn": { "Ref": "pipelineRole" },
+                "ArtifactStore": {
+                    "Type": "S3",
+                    "Location": { "Ref" : "artifactsBucket" }
+                },
+                "Stages": [
+                    {
+                        "Name": "Source",
+                        "Actions": [
+                            {
+                                "Name": "SourceAction",
+                                "RunOrder": 1,
+                                "ActionTypeId": {
+                                    "Category": "Source",
+                                    "Owner": "AWS",
+                                    "Provider": "CODECOMMIT",
+                                    "Version": "1"
+                                },
+                                "Configuration": {
+                                    "RepositoryName": { "Ref": "theSourceRepo" },
+                                    "BranchName": { "Ref": "theSourceBranch" }
+                                },
+                                "OutputArtifacts": [
+                                    { "Name": "SourceOutput" }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    "Outputs": {
+        "codeBuildProject": {
+            "Description": "The dev simple project",
+            "Value": {"Ref": "codeBuildProject"},
+            "Export": {"Name": "simpleCodeBuildProject"}
+        }
+    }
+}
