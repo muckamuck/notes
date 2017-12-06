@@ -1,0 +1,352 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Development VPC",
+    "Parameters": {
+        "adminRouteTable": {
+            "Description": "The admin route table ID",
+            "Type": "String"
+        },
+        "adminVPC": {
+            "Description": "The admin VPC",
+            "Type": "String"
+        },
+        "adminVPCCidr": {
+            "Description": "The admin VPC CIDR",
+            "Type": "String"
+        },
+        "azOne": {
+            "Description": "The AZ for the first front subnet",
+            "Type": "String"
+        },
+        "azTwo": {
+            "Description": "The AZ for the secon front subnet",
+            "Type": "String"
+        },
+        "IGWname": {
+            "Description": "The name of the internet gateway",
+            "Type": "String"
+        },
+        "workerRouteTableName": {
+            "Description": "The name of the worker route table",
+            "Type": "String"
+        },
+        "frontRouteTableName": {
+            "Description": "The name of the front route table",
+            "Type": "String"
+        },
+        "frontSubnetCIDROne": {
+            "Description": "The CIDR block of our new friend",
+            "Type": "String"
+        },
+        "frontSubnetCIDRTwo": {
+            "Description": "The CIDR block of our new friend",
+            "Type": "String"
+        },
+        "workerSubnetCIDROne": {
+            "Description": "The CIDR block of our new friend",
+            "Type": "String"
+        },
+        "workerSubnetCIDRTwo": {
+            "Description": "The CIDR block of our new friend",
+            "Type": "String"
+        },
+        "theCIDR": {
+            "Description": "The CIDR block of our new friend",
+            "Type": "String"
+        }
+    },
+    "Resources": {
+        "devVPC": {
+            "Type": "AWS::EC2::VPC",
+            "Properties": {
+                "CidrBlock": {
+                    "Ref": "theCIDR"
+                },
+                "EnableDnsHostnames": "false",
+                "EnableDnsSupport": "true"
+            }
+        },
+        "adminVPCPeeringConnection": {
+            "Type": "AWS::EC2::VPCPeeringConnection",
+            "DependsOn": "devVPC",
+            "Properties": {
+            "VpcId": {"Ref": "adminVPC"},
+            "PeerVpcId": {"Ref": "devVPC"}
+            }
+        },
+        "theInternetGateway" : {
+            "Type" : "AWS::EC2::InternetGateway",
+            "Properties" : {
+            "Tags" : [ {"Key" : "Name", "Value" : {"Ref": "IGWname"}}]
+            }
+        },
+        "vpcIgwAssociation" : {
+            "Type" : "AWS::EC2::VPCGatewayAttachment",
+            "DependsOn": [
+                "devVPC",
+                "theInternetGateway"
+            ],
+            "Properties" : {
+                "VpcId" : { "Ref" : "devVPC" },
+                "InternetGatewayId" : { "Ref" : "theInternetGateway" }
+            }
+        },
+        "frontSubnetOne": {
+            "Type": "AWS::EC2::Subnet",
+            "DependsOn": "devVPC",
+            "Properties": {
+                "AvailabilityZone": {"Ref": "azOne"},
+                "CidrBlock": {"Ref": "frontSubnetCIDROne"},
+                "MapPublicIpOnLaunch": "false",
+                "VpcId": {
+                    "Ref": "devVPC"
+                }
+            }
+        },
+        "frontSubnetTwo": {
+            "Type": "AWS::EC2::Subnet",
+            "DependsOn": "devVPC",
+            "Properties": {
+                "AvailabilityZone": {"Ref": "azTwo"},
+                "CidrBlock": {"Ref": "frontSubnetCIDRTwo"},
+                "MapPublicIpOnLaunch": "false",
+                "VpcId": {
+                    "Ref": "devVPC"
+                }
+            }
+        },
+        "workerSubnetOne": {
+            "Type": "AWS::EC2::Subnet",
+            "DependsOn": "devVPC",
+            "Properties": {
+                "AvailabilityZone": {"Ref": "azOne"},
+                "CidrBlock": {"Ref": "workerSubnetCIDROne"},
+                "MapPublicIpOnLaunch": "false",
+                "VpcId": {
+                    "Ref": "devVPC"
+                }
+            }
+        },
+        "workerSubnetTwo": {
+            "Type": "AWS::EC2::Subnet",
+            "DependsOn": "devVPC",
+            "Properties": {
+                "AvailabilityZone": {"Ref": "azTwo"},
+                "CidrBlock": {"Ref": "workerSubnetCIDRTwo"},
+                "MapPublicIpOnLaunch": "false",
+                "VpcId": {
+                    "Ref": "devVPC"
+                }
+            }
+        },
+        "natgwEIP": {
+            "Type" : "AWS::EC2::EIP",
+            "Properties" : {
+                "Domain" : "vpc"
+            }
+        },
+        "natgw" : {
+            "DependsOn" : "natgwEIP",
+            "Type" : "AWS::EC2::NatGateway",
+            "Properties" : {
+            "AllocationId" : { "Fn::GetAtt" : ["natgwEIP", "AllocationId"]},
+            "SubnetId" : { "Ref" : "frontSubnetOne"}
+            }
+        },
+        "frontRouteTable" : {
+            "Type" : "AWS::EC2::RouteTable",
+            "Properties" : {
+                "VpcId" : { "Ref" : "devVPC" },
+                "Tags" : [
+                    { "Key" : "Name", "Value" : {"Ref": "frontRouteTableName"} }
+                ]
+            }
+        },
+        "workerRouteTable" : {
+            "Type" : "AWS::EC2::RouteTable",
+            "Properties" : {
+                "VpcId" : { "Ref" : "devVPC" },
+                "Tags" : [
+                    { "Key" : "Name", "Value" : {"Ref": "workerRouteTableName"} }
+                ]
+            }
+        },
+        "frontRouteToTheUniverse": {
+            "Type": "AWS::EC2::Route",
+            "DependsOn": [
+                "frontRouteTable",
+                "theInternetGateway"
+            ],
+            "Properties": {
+                "RouteTableId": { "Ref": "frontRouteTable" },
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "GatewayId": {
+                    "Ref": "theInternetGateway"
+                }
+            }
+        },
+        "workerRouteToTheUniverse": {
+            "Type": "AWS::EC2::Route",
+            "DependsOn": [
+                "workerRouteTable",
+                "natgw"
+            ],
+            "Properties": {
+                "RouteTableId": { "Ref": "workerRouteTable" },
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "NatGatewayId": {
+                    "Ref": "natgw"
+                }
+            }
+        },
+        "routeToAdminVPC": {
+            "Type": "AWS::EC2::Route",
+            "DependsOn": [
+                "adminVPCPeeringConnection",
+                "workerRouteTable"
+            ],
+            "Properties": {
+                "RouteTableId": { "Ref": "workerRouteTable" },
+                "DestinationCidrBlock": {"Ref": "adminVPCCidr"},
+                "VpcPeeringConnectionId": {
+                    "Ref": "adminVPCPeeringConnection"
+                }
+            }
+        },
+        "routeFromAdminVPC": {
+            "Type": "AWS::EC2::Route",
+            "DependsOn": [
+                "adminVPCPeeringConnection",
+                "workerRouteTable"
+            ],
+            "Properties": {
+                "RouteTableId": {"Ref": "adminRouteTable"},
+                "DestinationCidrBlock": {"Ref": "theCIDR"},
+                "VpcPeeringConnectionId": {
+                    "Ref": "adminVPCPeeringConnection"
+                }
+            }
+        },
+        "frontSubnetOneRoute": {
+            "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+            "DependsOn": [
+                "frontRouteTable",
+                "frontSubnetOne"
+            ],
+            "Properties" : {
+                "RouteTableId" : {"Ref": "frontRouteTable"},
+                "SubnetId" : {"Ref": "frontSubnetOne"}
+            }
+        },
+        "frontSubnetTwoRoute": {
+            "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+            "DependsOn": [
+                "frontRouteTable",
+                "frontSubnetTwo"
+            ],
+            "Properties" : {
+                "RouteTableId" : {"Ref": "frontRouteTable"},
+                "SubnetId" : {"Ref": "frontSubnetTwo"}
+            }
+        },
+        "workerSubnetOneRoute": {
+            "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+            "DependsOn": [
+                "workerRouteTable",
+                "workerSubnetOne"
+            ],
+            "Properties" : {
+                "RouteTableId" : {"Ref": "workerRouteTable"},
+                "SubnetId" : {"Ref": "workerSubnetOne"}
+            }
+        },
+        "workerSubnetTwoRoute": {
+            "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+            "DependsOn": [
+                "workerRouteTable",
+                "workerSubnetTwo"
+            ],
+            "Properties" : {
+                "RouteTableId" : {"Ref": "workerRouteTable"},
+                "SubnetId" : {"Ref": "workerSubnetTwo"}
+            }
+        },
+        "devSecurityGroup" : {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties" : {
+                "GroupDescription" : "Allow development connections",
+                "GroupName" : "dev-access",
+                "VpcId" : {"Ref" : "devVPC"},
+                "SecurityGroupIngress" : [
+                    {
+                        "IpProtocol" : "tcp",
+                        "FromPort" : "22",
+                        "ToPort" : "22",
+                        "CidrIp" : {"Ref": "adminVPCCidr"}
+                    },
+                    {
+                        "IpProtocol" : "tcp",
+                        "FromPort" : "80",
+                        "ToPort" : "80",
+                        "CidrIp" : {"Ref": "adminVPCCidr"}
+                    },
+                    {
+                        "IpProtocol" : "tcp",
+                        "FromPort" : "443",
+                        "ToPort" : "443",
+                        "CidrIp" : {"Ref": "adminVPCCidr"}
+                    },
+                    {
+                        "IpProtocol" : "tcp",
+                        "FromPort" : "8000",
+                        "ToPort" : "9000",
+                        "CidrIp" : {"Ref": "adminVPCCidr"}
+                    }
+                ],
+                "SecurityGroupEgress" : [{
+                    "IpProtocol" : "tcp",
+                    "FromPort" : "1",
+                    "ToPort" : "65535",
+                    "CidrIp" : "0.0.0.0/0"
+                }]
+            }
+        }
+    },
+    "Outputs": {
+        "devVPC": {
+            "Description": "The development VPC",
+            "Value": {"Ref": "devVPC"},
+            "Export": {"Name": "devVPCV1"}
+        },
+        "devSecurityGroup": {
+            "Description": "The development SG that allows ssh inbound",
+            "Value": {"Ref": "devSecurityGroup"},
+            "Export": {"Name": "devSecurityGroupV1"}
+        },
+        "frontSubnetOne": {
+            "Description": "The first public subnet",
+            "Value": {"Ref": "frontSubnetOne"},
+            "Export": {"Name": "frontSubnetOneV1"}
+        },
+        "frontSubnetTwo": {
+            "Description": "The second public subnet",
+            "Value": {"Ref": "frontSubnetTwo"},
+            "Export": {"Name": "frontSubnetTwoV1"}
+        },
+        "workerSubnetOne": {
+            "Description": "The first worker subnet",
+            "Value": {"Ref": "workerSubnetOne"},
+            "Export": {"Name": "workerSubnetOneV1"}
+        },
+        "workerSubnetTwo": {
+            "Description": "The second worker subnet",
+            "Value": {"Ref": "workerSubnetTwo"},
+            "Export": {"Name": "workerSubnetTwoV1"}
+        },
+        "devVPCCidr": {
+            "Description": "The development VPC CIDR block",
+            "Value": {"Ref": "theCIDR"},
+            "Export": {"Name": "devVPCCidrV1"}
+        }
+    }
+}
