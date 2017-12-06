@@ -1,0 +1,410 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "ECS Experiment",
+    "Parameters": {
+        "clusterName": {
+            "Default": "cf-cluster-one",
+            "Description": "Name of the cluster we are creating",
+            "Type": "String"
+        },
+        "ecsAMI": {
+            "Description": "AMI for the instance",
+            "Type": "String"
+        },
+        "ecsInstanceProfile": {
+            "Description": "IAM profile for the instance",
+            "Type": "String"
+        },
+        "ecsTaskExecutionRole": {
+            "Default": "arn:aws:iam::018734038160:role/ecsTaskExecutionRole",
+            "Type": "String"
+        },
+        "ec2Key": {
+            "Description": "Key for the ECS host",
+            "Type": "String"
+        },
+        "instanceType": {
+            "Description": "Instance type  for the ECS host",
+            "Type": "String"
+        },
+        "machineName": {
+            "Description": "Name for the ECS host",
+            "Type": "String"
+        },
+        "desiredCapacity": {
+            "Default": "1",
+            "Description": "Number of instances to launch into ECS cluster.",
+            "Type": "Number"
+        },
+        "maxSize": {
+            "Default": "2",
+            "Description": "Maximum number of instances to launch into ECS cluster.",
+            "Type": "Number"
+        },
+        "extra": {
+            "Default": "42",
+            "Description": "Extra bits",
+            "Type": "String"
+        }
+    },
+    "Resources": {
+        "ECSCluster":{
+            "Type":"AWS::ECS::Cluster",
+            "Properties" : {
+                "ClusterName" : { "Ref": "clusterName" }
+            }
+        },
+        "ecsSecuityGroup" : {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties" : {
+                "GroupDescription" : "Allow ECS connections",
+                "GroupName" : "ecs-host",
+                "VpcId" : {"Fn::ImportValue": "devVPCV1"},
+                "SecurityGroupIngress" : [
+                    {
+                        "IpProtocol" : "tcp",
+                        "FromPort" : "22",
+                        "ToPort" : "22",
+                        "CidrIp" : "0.0.0.0/0"
+                    },
+                    {
+                        "IpProtocol" : "tcp",
+                        "FromPort" : "80",
+                        "ToPort" : "80",
+                        "CidrIp" : "0.0.0.0/0"
+                    },
+                    {
+                        "IpProtocol" : "tcp",
+                        "FromPort" : "443",
+                        "ToPort" : "443",
+                        "CidrIp" : "0.0.0.0/0"
+                    },
+                    {
+                        "IpProtocol" : "tcp",
+                        "FromPort" : "8080",
+                        "ToPort" : "8080",
+                        "CidrIp" : "0.0.0.0/0"
+                    }
+                ],
+                "SecurityGroupEgress" : [{
+                    "IpProtocol" : "tcp",
+                    "FromPort" : "1",
+                    "ToPort" : "65535",
+                    "CidrIp" : "0.0.0.0/0"
+                }]
+            }
+        },
+        "ecsSecuityGroupALBports": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "GroupId": { "Ref":"ecsSecuityGroup" },
+                "IpProtocol": "tcp",
+                "FromPort": "31000",
+                "ToPort": "61000",
+                "SourceSecurityGroupId": { "Ref":"ecsSecuityGroup" }
+            }
+        },
+        "cloudwatchLogsGroup": {
+            "Type": "AWS::Logs::LogGroup",
+            "Properties": {
+                "LogGroupName": {
+                    "Fn::Join": [ "-", 
+                        [ "ECSLogGroup", { "Ref":"AWS::StackName" } ]
+                    ]
+                },
+            "RetentionInDays": 7
+            }
+        },
+        "taskDefinition": {
+            "Type": "AWS::ECS::TaskDefinition",
+            "Properties": {
+                "ContainerDefinitions": [
+                    {
+                        "Essential": "true",
+                        "Image": "httpd:2.4",
+                        "LogConfiguration": {
+                            "LogDriver": "awslogs",
+                            "Options": {
+                                "awslogs-group": {
+                                    "Ref": "cloudwatchLogsGroup"
+                                },
+                                "awslogs-region": {
+                                    "Ref": "AWS::Region"
+                                },
+                                "awslogs-stream-prefix": "ecs-lab-app"
+                            }
+                        },
+                        "Name": "ecs-lab-app",
+                        "PortMappings": [
+                            {
+                                "ContainerPort": 80
+                            }
+                        ]
+                    }
+                ],
+                "Cpu": ".25 vCpu",
+                "ExecutionRoleArn": {"Ref":"ecsTaskExecutionRole"},
+                "Family": {
+                    "Fn::Join": [
+                        "",
+                        [ { "Ref": "AWS::StackName" }, "-ecs-lab-app" ]
+                    ]
+                },
+                "Memory": ".5 GB",
+                "NetworkMode": "awsvpc",
+                "RequiresCompatibilities" : [ "FARGATE" ],
+                "TaskRoleArn": {"Ref":"ecsTaskExecutionRole"}
+            }
+        },
+        "ecsLabALB":{
+            "Type":"AWS::ElasticLoadBalancingV2::LoadBalancer",
+            "Properties":{
+                "Name": "ecsLabALB",
+                "Scheme":"internet-facing",
+                "LoadBalancerAttributes": [
+                    {
+                        "Key":"idle_timeout.timeout_seconds",
+                        "Value":"30"
+                    }
+                ],
+                "Subnets": [ 
+                    {"Fn::ImportValue": "frontSubnetOneV1"},
+                    {"Fn::ImportValue": "frontSubnetTwoV1"}
+                ],
+                "SecurityGroups": [ { "Ref":"ecsSecuityGroup" } ]
+            }
+        },
+        "ecsLabTargetGroup": {
+            "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+            "DependsOn": "ecsLabALB",
+            "Properties": {
+                "HealthCheckIntervalSeconds": 10,
+                "HealthCheckPath": "/",
+                "HealthCheckProtocol": "HTTP",
+                "HealthCheckTimeoutSeconds": 5,
+                "HealthyThresholdCount": 2,
+                "Name": "ecsLabTargetGroup",
+                "Port": 80,
+                "Protocol": "HTTP",
+                "UnhealthyThresholdCount": 2,
+                "TargetType": "ip",
+                "VpcId": {"Fn::ImportValue": "devVPCV1"}
+            }
+        },
+        "ecsServiceRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": [ "sts:AssumeRole" ],
+                            "Effect": "Allow",
+                            "Principal": { "Service": [ "ecs.amazonaws.com" ] }
+                        }
+                    ]
+                },
+                "Path": "/",
+                "Policies": [
+                    {
+                        "PolicyDocument": {
+                            "Statement": [
+                                {
+                                    "Action": [
+                                        "elasticloadbalancing:DeregisterInstancesFromLoadBalancer",
+                                        "elasticloadbalancing:DeregisterTargets",
+                                        "elasticloadbalancing:Describe*",
+                                        "elasticloadbalancing:RegisterInstancesWithLoadBalancer",
+                                        "elasticloadbalancing:RegisterTargets",
+                                        "ec2:Describe*",
+                                        "ec2:AuthorizeSecurityGroupIngress"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": "*"
+                                }
+                            ]
+                        },
+                        "PolicyName": "ecs-service"
+                    }
+                ]
+            }
+        },
+        "ecsLabALBListener":{
+            "Type": "AWS::ElasticLoadBalancingV2::Listener",
+            "Properties": {
+                "DefaultActions":[
+                    {
+                        "Type":"forward",
+                        "TargetGroupArn": { "Ref": "ecsLabTargetGroup" }
+                    }
+                ],
+                "LoadBalancerArn": { "Ref":"ecsLabALB" },
+                "Port": "80",
+                "Protocol": "HTTP"
+            }
+        },
+
+        "labService":{
+             "Type": "AWS::ECS::Service",
+             "DependsOn": [
+                 "ecsLabALBListener",
+                 "ecsServiceRole"
+             ],
+             "Properties": {
+                 "Cluster": { "Ref": "ECSCluster" },
+                 "DesiredCount": "1",
+                 "LaunchType": "FARGATE",
+                 "LoadBalancers": [
+                     {
+                         "ContainerName": "ecs-lab-app",
+                         "ContainerPort": "80",
+                         "TargetGroupArn": { "Ref": "ecsLabTargetGroup" }
+                     }
+                 ],
+                 "NetworkConfiguration":{
+                     "AwsvpcConfiguration":{
+                         "SecurityGroups": [
+                             { "Ref":"ecsSecuityGroup" }
+                         ],
+                         "Subnets":[
+                             {"Fn::ImportValue": "workerSubnetOneV1"},
+                             {"Fn::ImportValue": "workerSubnetTwoV1"}
+                         ]
+                     }
+                 },
+                 "TaskDefinition": { "Ref":"taskDefinition" }
+             }
+        },
+        "labAutoscalingRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": [
+                                "sts:AssumeRole"
+                            ],
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "application-autoscaling.amazonaws.com"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                "Path": "/",
+                "Policies": [
+                    {
+                        "PolicyDocument": {
+                            "Statement": [
+                                {
+                                    "Action": [
+                                        "application-autoscaling:*",
+                                        "cloudwatch:DescribeAlarms",
+                                        "cloudwatch:PutMetricAlarm",
+                                        "ecs:DescribeServices",
+                                        "ecs:UpdateService"
+                                    ],
+                                    "Effect": "Allow",
+                                    "Resource": "*"
+                                }
+                            ]
+                        },
+                        "PolicyName": "service-autoscaling"
+                    }
+                ]
+            }
+        },
+        "labServiceScalingTarget": {
+            "Type": "AWS::ApplicationAutoScaling::ScalableTarget",
+            "DependsOn": "labService",
+            "Properties": {
+                "MinCapacity": 1,
+                "MaxCapacity": 2,
+                "ResourceId": {
+                    "Fn::Join": [
+                        "",
+                        [
+                            "service/", 
+                            { "Ref": "ECSCluster" }, "/", 
+                            { "Fn::GetAtt": [ "labService", "Name" ] }
+                        ]
+                    ]
+                },
+                "RoleARN": {
+                    "Fn::GetAtt": [ "labAutoscalingRole", "Arn" ]
+                },
+                "ScalableDimension": "ecs:service:DesiredCount",
+                "ServiceNamespace": "ecs"
+            }
+        },
+        "labServiceScalingPolicy": {
+            "Type": "AWS::ApplicationAutoScaling::ScalingPolicy",
+            "Properties": {
+                "PolicyName": "AStepPolicy",
+                "PolicyType": "StepScaling",
+                "ScalingTargetId": {
+                    "Ref": "labServiceScalingTarget"
+                },
+                "StepScalingPolicyConfiguration": {
+                    "AdjustmentType": "PercentChangeInCapacity",
+                    "Cooldown": 60,
+                    "MetricAggregationType": "Average",
+                    "StepAdjustments": [
+                        {
+                            "MetricIntervalLowerBound": 0,
+                            "ScalingAdjustment": 200
+                        }
+                    ]
+                }
+            }
+        },
+        "lab500sAlarmScaleUp": {
+            "Type": "AWS::CloudWatch::Alarm",
+            "Properties": {
+                "AlarmActions": [ { "Ref": "labServiceScalingPolicy" }
+                ],
+                "AlarmDescription": "Alarm if our ALB generates too many HTTP 500s.",
+                "ComparisonOperator": "GreaterThanThreshold",
+                "Dimensions": [
+                    {
+                        "Name": "LoadBalancer",
+                        "Value": {
+                            "Fn::GetAtt": [ "ecsLabALB", "LoadBalancerFullName" ]
+                        }
+                    }
+                ],
+                "EvaluationPeriods": "1",
+                "MetricName": "HTTPCode_ELB_5XX_Count",
+                "Namespace": "AWS/ApplicationELB",
+                "Period": "60",
+                "Statistic": "Average",
+                "Threshold": "10"
+            }
+        },
+        "labListenerRule": {
+            "Type": "AWS::ElasticLoadBalancingV2::ListenerRule",
+            "DependsOn": "ecsLabALBListener",
+            "Properties": {
+                "Actions": [
+                    {
+                        "TargetGroupArn": { "Ref": "ecsLabTargetGroup" },
+                        "Type": "forward"
+                    }
+                ],
+                "Conditions": [
+                    {
+                        "Field": "path-pattern",
+                        "Values": [
+                            "/"
+                        ]
+                    }
+                ],
+                "ListenerArn": {
+                    "Ref": "ecsLabALBListener"
+                },
+                "Priority": 1
+            }
+        }
+    }
+}
