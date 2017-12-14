@@ -7,43 +7,8 @@
             "Description": "Name of the cluster we are creating",
             "Type": "String"
         },
-        "ecsAMI": {
-            "Description": "AMI for the instance",
-            "Type": "String"
-        },
-        "ecsInstanceProfile": {
-            "Description": "IAM profile for the instance",
-            "Type": "String"
-        },
         "ecsTaskExecutionRole": {
             "Default": "arn:aws:iam::018734038160:role/ecsTaskExecutionRole",
-            "Type": "String"
-        },
-        "ec2Key": {
-            "Description": "Key for the ECS host",
-            "Type": "String"
-        },
-        "instanceType": {
-            "Description": "Instance type  for the ECS host",
-            "Type": "String"
-        },
-        "machineName": {
-            "Description": "Name for the ECS host",
-            "Type": "String"
-        },
-        "desiredCapacity": {
-            "Default": "1",
-            "Description": "Number of instances to launch into ECS cluster.",
-            "Type": "Number"
-        },
-        "maxSize": {
-            "Default": "2",
-            "Description": "Maximum number of instances to launch into ECS cluster.",
-            "Type": "Number"
-        },
-        "extra": {
-            "Default": "42",
-            "Description": "Extra bits",
             "Type": "String"
         }
     },
