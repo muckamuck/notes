@@ -1,0 +1,87 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2//EN">
+
+<html>
+    <head>
+        <title>Approve Release</title>
+        <style> 
+        .center {
+            margin: auto;
+            width: 50%;
+            padding: 10px;
+        }
+        input[type=text] {
+            width: 100%;
+            padding: 12px 20px;
+            margin: 8px 0;
+            box-sizing: border-box;
+        }
+        .approve-button {
+            background-color: #00aa00;
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 12px;
+            margin: 4px 2px;
+            cursor: pointer;
+        }
+        .reject-button {
+            background-color: #aa0000;
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 12px;
+            margin: 4px 2px;
+            cursor: pointer;
+        }
+        </style>
+        <script>
+            function put_approval_data(approval_status) {
+                var url = window.location.pathname + '/approval'
+                var data = {};
+                data.approval_status = approval_status;
+                data.message = document.getElementById('action_notes').value;
+                var json = JSON.stringify(data);
+                
+                var xhr = new XMLHttpRequest();
+                xhr.open("POST", url, true);
+                xhr.setRequestHeader('Content-type','application/json; charset=utf-8');
+                xhr.onload = function () {
+	                var users = JSON.parse(xhr.responseText);
+	                if (xhr.readyState == 4 && xhr.status == "201") {
+                        console.log('POST to /approval returned');
+                        if (approval_status) {
+                            document.getElementById("status_box").innerHTML = "<strong>Status:</strong> approved";
+                        } else {
+                            document.getElementById("status_box").innerHTML = "<strong>Status:</strong> rejected";
+                        }
+                    } else if (xhr.readyState == 4 && xhr.status == "400") {
+                        document.getElementById("status_box").innerHTML = "<strong>Status:</strong> action not accepted, probably no release is pending";
+                    } else if (xhr.readyState == 4 && xhr.status == "500") {
+                        document.getElementById("status_box").innerHTML = "<strong>Status:</strong> there was an internal error";
+	                }
+                }
+                xhr.send(json);
+            }
+        </script>
+    </head>
+    <body>
+        <div class="center">
+            <p id="status_box"></p>
+            <p>
+                <strong>Action note:<strong><br>
+                <input type="text" id="action_notes" />
+            </p>
+            <p>
+                <button class="approve-button" onclick="put_approval_data(true);">Approve</button>
+                <button class="reject-button" onclick="put_approval_data(false);">Reject</button>
+            </p>
+            <p>version: 0.0.15</p>
+        </div>
+    </body>
+</html>
