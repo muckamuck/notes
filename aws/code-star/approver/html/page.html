@@ -42,6 +42,7 @@
         </style>
         <script>
             function put_approval_data(approval_status) {
+                document.getElementById("status_box").innerHTML = "<strong>Status:</strong> pending";
                 var url = window.location.pathname + '/approval'
                 var data = {};
                 data.approval_status = approval_status;
@@ -72,7 +73,7 @@
     </head>
     <body>
         <div class="center">
-            <p id="status_box"></p>
+            <p id="status_box"><strong>Status:</strong> none</p>
             <p>
                 <strong>Action note:<strong><br>
                 <input type="text" id="action_notes" />
@@ -81,7 +82,7 @@
                 <button class="approve-button" onclick="put_approval_data(true);">Approve</button>
                 <button class="reject-button" onclick="put_approval_data(false);">Reject</button>
             </p>
-            <p>version: 0.0.15</p>
+            <p>version: 0.0.16</p>
         </div>
     </body>
 </html>
