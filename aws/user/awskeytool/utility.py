@@ -3,11 +3,15 @@ import subprocess
 import traceback
 
 
-def execute_command(self, command):
+def execute_command(command):
     stdout_buf = str()
     stderr_buf = str()
     try:
-        p = subprocess.Popen(command, stdout=subprocess.PIPE)
+        p = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
         out, err = p.communicate()
 
         if out:

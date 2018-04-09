@@ -3,7 +3,7 @@ setup(
         name="AWSKeyTool",
         version='0.0.1',
         packages=['awskeytool'],
-        description='Junk Drawer for AWS Key Utilities',
+        description='Collection of AWS Key Utilities',
         author='Chuck Muckamuck',
         author_email='Chuck.Muckamuck@gmail.com',
         install_requires=[

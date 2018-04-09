@@ -1,6 +1,7 @@
 import sys
 import click
 import platform
+from access_key_tool import KeyTool
 
 valid_systems = [
     'linux',
@@ -16,9 +17,11 @@ def cli():
 
 @cli.command()
 @click.option('--user-name', '-u', help='user name of interest', required=True)
-@click.option('--profile', '-p', help='profile of interest', required=True)
-def rotate(user_name):
+@click.option('--profile', '-p', help='profile of interest')
+def rotate(user_name, profile):
     print('Rotating keys for {}'.format(user_name))
+    key_tool = KeyTool(user_name, profile)
+    key_tool.rotate_key()
 
 
 def verify_real_system():

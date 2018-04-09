@@ -1,125 +1,164 @@
 from bson import json_util #noqa
 import json #noqa
 import boto3
-import sys
 import logging
 from botocore.exceptions import ClientError
+from utility import execute_command
 
 
 NoSuchEntity = 'NoSuchEntity'
 LimitExceeded = 'LimitExceeded'
+development = True
 
 
-def print_usage():
-    print('usage: python {} <user-name>'.format(sys.argv[0]))
+class KeyTool:
+    _iam_client = None
+    _ssm_client = None
+    _user_name = None
+    _access_key = None
+    _secret = None
+    _existing_keys = None
 
+    def __init__(self, user_name, profile):
+        try:
+            self._user_name = user_name
+            if profile:
+                api_session = boto3.Session(profile_name=profile)
+            else:
+                api_session = boto3.Session()
 
-def get_api_client(aws_service):
-    '''
-    Get an AWS client
+            self._iam_client = api_session.client('iam')
+            self._ssm_client = api_session.client('ssm')
+        except Exception as x:
+            logging.error('Exception caught in initialization(): {}'.format(x))
+            return None
 
-    Args:
-        None
+    def _list_access_keys(self):
+        try:
+            self._existing_keys = []
+            r = self._iam_client.list_access_keys(UserName=self._user_name)
+            key_data = r.get('AccessKeyMetadata', [])
+            for k in key_data:
+                wrk = k.get('AccessKeyId', None)
+                if wrk:
+                    self._existing_keys.append(wrk)
+            print(json.dumps(self._existing_keys, indent=2, default=json_util.default))
+            return True
+        except ClientError as x:
+            error_code = x.response['Error']['Code']
+            if error_code == NoSuchEntity:
+                print('list_access_keys() user not found')
+            elif error_code == LimitExceeded:
+                print('list_access_keys() access key limit reached')
+            else:
+                print('list_access_keys() strange error: {}'.format(error_code))
+        except Exception as wtf:
+            print('list_access_keys() exploded [{}]: {}'.format(type(wtf), wtf))
 
-    Returns:
-        AWS client connection | None
-    '''
-    try:
-        api_session = boto3.Session()
-        api_client = api_session.client(aws_service)
-        return api_client
-    except Exception as x:
-        logging.error('Exception caught in get_api_client(): {}'.format(x))
-        return None
+        return False
 
+    def _create_credentials(self):
+        print('Setting creds for {}'.format(self._user_name))
+        try:
+            r = self._iam_client.create_access_key(UserName=self._user_name)
+            self._access_key = r.get('AccessKey', {}).get('AccessKeyId', None)
+            self._secret = r.get('AccessKey', {}).get('SecretAccessKey', None)
+            if self._access_key and self._secret:
+                print('Access key generated')
+                return True
+            else:
+                print('Access key NOT generated')
+        except ClientError as x:
+            error_code = x.response['Error']['Code']
+            if error_code == NoSuchEntity:
+                print('create_credentials() user not found')
+            elif error_code == LimitExceeded:
+                print('create_credentials() access key limit reached')
+            else:
+                print('create_credentials() strange error: {}'.format(error_code))
+        except Exception as wtf:
+            print('create_credentials() exploded [{}]: {}'.format(type(wtf), wtf))
 
-def list_access_keys(user):
-    pass
+        return False
 
+    def _store_credentials(self):
+        print('Storing creds to SSM')
+        try:
+            access_key_key = '/service_account/{}/access_key'.format(self._user_name)
+            secret_key = '/service_account/{}/secret'.format(self._user_name)
+            r = self._ssm_client.put_parameter( # noqa
+                    Name=access_key_key,
+                    Value=self._access_key,
+                    Type='SecureString',
+                    Overwrite=True
+            )
+            print('Access key stored in {}'.format(access_key_key))
 
-def create_credentials(user):
-    print('Setting creds for {}'.format(user))
-    try:
-        iam_client = get_api_client('iam')
-        r = iam_client.create_access_key(UserName=user)
-        access_key = r.get('AccessKey', {}).get('AccessKeyId', None)
-        secret = r.get('AccessKey', {}).get('SecretAccessKey', None)
-        if access_key and secret:
-            print('Access key generated')
-            return access_key, secret
-        else:
-            print('Access key NOT generated')
-    except ClientError as x:
-        error_code = x.response['Error']['Code']
-        if error_code == NoSuchEntity:
-            print('set_credentials() user not found')
-        elif error_code == LimitExceeded:
-            print('set_credentials() access key limit reached')
-        else:
-            print('set_credentials() strange error: {}'.format(error_code))
-    except Exception as wtf:
-        print('set_credentials() exploded [{}]: {}'.format(type(wtf), wtf))
+            r = self._ssm_client.put_parameter( # noqa
+                    Name=secret_key,
+                    Value=self._secret,
+                    Type='SecureString',
+                    Overwrite=True
+            )
+            print('Secret stored in {}'.format(secret_key))
 
-    return None, None
+            return True
+        except Exception as wtf:
+            print('store_credentials() exploded [{}]: {}'.format(type(wtf), wtf))
 
+        return False
 
-def store_credentials(user, access_key, secret):
-    print('Storing creds to SSM')
-    try:
-        ssm_client = get_api_client('ssm')
-        access_key_key = '/service_account/{}/access_key'.format(user)
-        secret_key = '/service_account/{}/secret'.format(user)
-        r = ssm_client.put_parameter( # noqa
-                Name=access_key_key,
-                Value=access_key,
-                Type='SecureString',
-                Overwrite=True
-        )
-        print('Access key stored in {}'.format(access_key_key))
+    def _delete_existing_keys(self):
+        # import pdb; pdb.set_trace()
+        try:
+            tmp_client = boto3.client( #noqa
+                'iam',
+                aws_access_key_id=self._access_key,
+                aws_secret_access_key=self._secret,
+                aws_session_token='SESSION_TOKEN'
+            )
 
-        r = ssm_client.put_parameter( # noqa
-                Name=secret_key,
-                Value=secret,
-                Type='SecureString',
-                Overwrite=True
-        )
-        print('Secret stored in {}'.format(secret_key))
+            command = ['aws', 'configure', 'set', 'aws_access_key_id', self._access_key]
+            r, out, err = execute_command(command)
+            if r > 0:
+                return False
 
-        return True
-    except Exception as wtf:
-        print('store_credentials() exploded [{}]: {}'.format(type(wtf), wtf))
+            command = ['aws', 'configure', 'set', 'aws_secret_access_key', self._secret]
+            r, out, err = execute_command(command)
+            if r > 0:
+                return False
 
-    return False
+            for key in self._existing_keys:
+                response = self._iam_client.delete_access_key( #noqa
+                    UserName=self._user_name,
+                    AccessKeyId=key
+                )
+                print(json.dumps(response, indent=2, default=json_util.default))
 
+            return True
+        except ClientError as x:
+            error_code = x.response['Error']['Code']
+            print('delete_existing_keys() strange error: {}'.format(error_code))
+        except Exception as wtf:
+            print('delete_existing_keys() exploded [{}]: {}'.format(type(wtf), wtf))
 
-def delete_existing_keys(existing_keys):
-    pass
+        return False
 
+    def rotate_key(self):
+        if not self._list_access_keys():
+            return False
 
-if __name__ == '__main__':
-    if len(sys.argv) == 1 or sys.argv[1] == '-?' or sys.argv[1] == '--help':
-        print_usage()
-        sys.exit(1)
+        status = self._create_credentials()
+        if not status:
+            return False
 
-    user_name = sys.argv[1]
-    status, existing_keys = list_access_keys(user_name)
+        status = self._store_credentials()
+        if not status:
+            return False
 
-    if status:
-        status, access_key, secret = create_credentials(user_name)
-    else:
-        sys.exit(1)
+        status = self._delete_existing_keys()
 
-    if status:
-        status = store_credentials(sys.argv[1], access_key, secret)
-    else:
-        sys.exit(1)
+        if development:
+            return True
 
-    if status:
-        status = delete_existing_keys(existing_keys)
-    else:
-        sys.exit(1)
-
-    if status:
-        sys.exit(0)
-    else:
-        sys.exit(1)
+        return status
