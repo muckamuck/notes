@@ -6,12 +6,11 @@
             "Description": "The place to keep notes",
             "Type": "String"
         },
-        "theSourceRepo": {
+        "containerRepo": {
             "Description": "The sources that we are about",
             "Type": "String"
         },
-        "theSourceBranch": {
-            "Default": "master",
+        "containerBranch": {
             "Description": "The branch that we are about",
             "Type": "String"
         },
@@ -33,6 +32,15 @@
         }
     },
     "Resources": {
+        "fooVersion": {
+            "Type": "AWS::SSM::Parameter",
+            "Properties": {
+                "Name": "foo_version",
+                "Type": "String",
+                "Value": "0.0.1",
+                "Description": "SSM Parameter for foo version."
+            }
+        },
         "codeBuildProject": {
             "Type": "AWS::CodeBuild::Project",
             "Properties": {
@@ -80,11 +88,11 @@
                                     "Version": "1"
                                 },
                                 "Configuration": {
-                                    "RepositoryName": { "Ref": "theSourceRepo" },
-                                    "BranchName": { "Ref": "theSourceBranch" }
+                                    "RepositoryName": { "Ref": "containerRepo" },
+                                    "BranchName": { "Ref": "containerBranch" }
                                 },
                                 "OutputArtifacts": [
-                                    { "Name": "SourceOutput" }
+                                    { "Name": "ContainerSourceOutput" }
                                 ]
                             }
                         ]
@@ -106,12 +114,12 @@
                                 },
                                 "InputArtifacts": [
                                     {
-                                        "Name": "SourceOutput"
+                                        "Name": "ContainerSourceOutput"
                                     }
                                 ],
                                 "OutputArtifacts": [
                                     {
-                                        "Name": "BuildOutput"
+                                        "Name": "ContainerBuildOutput"
                                     }
                                 ]
                             }

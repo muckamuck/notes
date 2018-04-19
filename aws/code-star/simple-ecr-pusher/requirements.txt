@@ -1,1 +1,1 @@
-Stackility<0.3
+Stackility>=0.4

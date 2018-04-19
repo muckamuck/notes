@@ -165,8 +165,7 @@
                     }
                 ],
                 "Subnets": [ 
-                    {"Fn::ImportValue": "frontSubnetOneV1"},
-                    {"Fn::ImportValue": "frontSubnetTwoV1"}
+                    {"Fn::ImportValue": "frontSubnetOneV1"}
                 ],
                 "SecurityGroups": [ { "Ref":"ecsSecuityGroup" } ]
             }
@@ -299,8 +298,7 @@
                 "MaxSize": { "Ref": "maxSize" },
                 "MinSize": "1",
                 "VPCZoneIdentifier": [
-                    {"Fn::ImportValue": "workerSubnetOneV1"},
-                    {"Fn::ImportValue": "workerSubnetTwoV1"}
+                    {"Fn::ImportValue": "workerSubnetOneV1"}
                 ]
             },
             "UpdatePolicy": {
