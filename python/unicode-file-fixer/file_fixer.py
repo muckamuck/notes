@@ -9,8 +9,6 @@ def walk_tree(start_dir):
         for file_name in file_list:
             new_name = fix_name(file_name)
             if new_name:
-                print(type(file_name))
-                print(file_name.encode('utf-8'))
                 print('fixing: {}/{} => {}/{}'.format(
                         dir_name.encode('utf-8'),
                         file_name.encode('utf-8'),
