@@ -1,5 +1,6 @@
 Notes:
 
+* This is completely adhoc and not really that useful
 * ```mkweb.sh``` is executed in the ```full``` directory
 * The rest of the scripts are executed in the created ```web``` directory
 
