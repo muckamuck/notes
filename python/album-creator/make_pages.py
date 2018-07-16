@@ -11,13 +11,15 @@ def walk_stdin():
         parts = f.split('.')
         parts.pop(-1)
         f = ''.join(parts)
+        stub_name = '{}'.format(f.replace('/', '_'))
         html_name = '{}.html'.format(f.replace('/', '_'))
         big_name = 'full/{}.JPG'.format(f)
         small_name = 'web/{}.JPG'.format(f)
         wrk = {
             'html': html_name,
             'big_name': big_name,
-            'small_name': small_name
+            'small_name': small_name,
+            'stub_name': stub_name
         }
         work_list.append(wrk)
 
@@ -41,6 +43,7 @@ def process_list(work_list):
             buf = t.substitute(
                 bigImage=this_thing.get('big_name', None),
                 smallImage=this_thing.get('small_name', None),
+                stub=this_thing.get('stub_name', None),
                 prevHtml=prev_thing.get('html', None),
                 nextHtml=next_thing.get('html', None)
             )

@@ -28,20 +28,20 @@ a:hover {
 
     </style>
   </head>
-  <body>
-
-
-<p style="text-align: center;">
-<a href="${nextHtml}"><img src="${smallImage}" /></a>
-<br/>
-<a href="${prevHtml}" class="previous round">&#8249;</a>
-<a href="${nextHtml}" class="next round">&#8250;</a>
-<br/>
-<br/>
-<br/>
-<a href="${bigImage}" target="xldl3884">Download</a>
-</p>
-
+  <body style="background-color: #5e5e5e;">
+    <p style="text-align: center;">
+    <a href="${nextHtml}"><img src="${smallImage}" /></a>
+    <br/>
+    <a href="${prevHtml}" class="previous round"><strong>&#8249;</strong></a>
+    <a href="${nextHtml}" class="next round"><strong>&#8250;</strong></a>
+    <br/>
+    <br/>
+    <br/>
+    <a href="${bigImage}"
+        class="next round"
+        download="${stub}"
+        alt="Download"><strong>&#8675;</strong></a>
+    </p>
   </body>
 </html>
 '''
