@@ -5,6 +5,8 @@ import fileinput #noqa
 import string
 from shutil import copyfile
 
+verbos = False
+
 
 @click.group()
 @click.version_option(version='0.0.1')
@@ -27,7 +29,7 @@ def fix(work_dir, dryrun):
 def walk_stdin(work_dir, dryrun):
     for _thing in sys.stdin:
         thing = _thing.strip()
-        process_file(work_dir, thing)
+        process_file(work_dir, thing, dryrun)
 
 
 def fix_name(_file_name):
@@ -48,10 +50,12 @@ def fix_name(_file_name):
         return None
 
 
-def process_file(work_dir, path_name):
+def process_file(work_dir, path_name, dryrun):
     try:
         new_name = fix_name(path_name)
         if not new_name:
+            if dryrun and verbos:
+                print('(dryrun) [good] {}'.format(path_name))
             return
 
         parts = path_name.split('/')
@@ -61,7 +65,8 @@ def process_file(work_dir, path_name):
         target_dir = '{}/{}'.format(work_dir, d)
         target_file = '{}/{}'.format(work_dir, new_name)
         try:
-            os.makedirs(target_dir)
+            if not dryrun:
+                os.makedirs(target_dir)
         except:
             pass
 
@@ -72,8 +77,12 @@ def process_file(work_dir, path_name):
             print('DST[{}]: {}'.format(type(target_file), target_file))
             print()
         else:
-            copyfile(path_name, target_file)
-            print('Fixed: {}'.format(target_file))
+            if dryrun:
+                sz = os.path.getsize(path_name)
+                print('(dryrun) [{}] {}'.format(sz, path_name))
+            else:
+                copyfile(path_name, target_file)
+                print('Fixed: {}'.format(target_file))
 
     except Exception as wtf:
         print(str(wtf))
